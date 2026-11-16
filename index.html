@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>goyt</title>
+<style>
+  :root { --bg:#fafafa; --fg:#1a1a1a; --muted:#666; --card:#fff; --line:#ddd; --accent:#c4302b; --ok:#2e7d32; --bad:#c62828; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#151515; --fg:#eee; --muted:#999; --card:#1f1f1f; --line:#333; --accent:#ff5a52; --ok:#66bb6a; --bad:#ef5350; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  h1 { margin: 0 0 16px; font-size: 22px; }
+  h2 { font-size: 16px; margin: 28px 0 8px; }
+  form, .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; }
+  input[type=url] { width:100%; padding:10px; font-size:16px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+  .row { display:flex; flex-wrap:wrap; gap:16px; margin-top:12px; align-items:end; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted); }
+  select { padding:6px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); font-size:14px; }
+  .radio { flex-direction:row; align-items:center; gap:6px; color:var(--fg); font-size:14px; }
+  button { padding:9px 18px; font-size:15px; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; margin-left:auto; }
+  #err { color:var(--bad); margin-top:8px; min-height:1em; font-size:13px; }
+  ul { list-style:none; padding:0; margin:0; }
+  li { border-bottom:1px solid var(--line); padding:8px 0; overflow-wrap:anywhere; }
+  li:last-child { border-bottom:0; }
+  .meta { color:var(--muted); font-size:12px; font-family: ui-monospace, monospace; }
+  .done { color:var(--ok); } .failed { color:var(--bad); }
+  a { color:var(--accent); }
+  .empty { color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>goyt</h1>
+  <form id="f">
+    <input type="url" name="url" placeholder="https://www.youtube.com/watch?v=..." required autofocus>
+    <div class="row">
+      <label class="radio"><input type="radio" name="mode" value="video" checked> Video + audio</label>
+      <label class="radio"><input type="radio" name="mode" value="audio"> Audio only</label>
+    </div>
+    <div class="row">
+      <label id="q">Max quality
+        <select name="maxHeight">
+          <option value="best" selected>Best</option>
+          <option value="2160">2160p</option>
+          <option value="1440">1440p</option>
+          <option value="1080">1080p</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+          <option value="360">360p</option>
+        </select>
+      </label>
+      <label id="c">Container
+        <select name="container">
+          <option value="auto" selected>Auto (no re-encode)</option>
+          <option value="mp4">mp4</option>
+        </select>
+      </label>
+      <label id="a" hidden>Audio format
+        <select name="audioFormat">
+          <option value="best" selected>Best (original)</option>
+          <option value="opus">opus</option>
+          <option value="m4a">m4a</option>
+          <option value="mp3">mp3</option>
+          <option value="flac">flac</option>
+        </select>
+      </label>
+      <button type="submit">Download</button>
+    </div>
+    <div id="err"></div>
+  </form>
+
+  <h2>Jobs</h2>
+  <div class="card"><ul id="jobs"><li class="empty">nothing yet</li></ul></div>
+
+  <h2>Files</h2>
+  <div class="card"><ul id="files"><li class="empty">nothing yet</li></ul></div>
+</main>
+<script>
+const f = document.getElementById('f');
+const $ = id => document.getElementById(id);
+
+function syncMode() {
+  const audio = f.mode.value === 'audio';
+  $('q').hidden = audio; $('c').hidden = audio; $('a').hidden = !audio;
+}
+f.addEventListener('change', syncMode);
+
+f.addEventListener('submit', async e => {
+  e.preventDefault();
+  $('err').textContent = '';
+  const body = Object.fromEntries(new FormData(f));
+  const r = await fetch('/api/jobs', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+  if (!r.ok) { $('err').textContent = await r.text(); return; }
+  f.url.value = '';
+  refresh();
+});
+
+function li(html) { const el = document.createElement('li'); el.innerHTML = html; return el; }
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function size(n) { const u = ['B','KB','MB','GB']; let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + ' ' + u[i]; }
+
+function fill(ul, items, render) {
+  ul.replaceChildren(...(items.length ? items.map(render) : [li('<span class="empty">nothing yet</span>')]));
+}
+
+async function refresh() {
+  try {
+    const [jobs, files] = await Promise.all([fetch('/api/jobs').then(r => r.json()), fetch('/api/files').then(r => r.json())]);
+    fill($('jobs'), jobs, j => {
+      const o = j.opts;
+      const what = o.mode === 'audio' ? `audio, ${o.audioFormat}` : `video, ${o.maxHeight}, ${o.container}`;
+      return li(`<div>${esc(o.url)}</div><div class="meta"><span class="${j.status}">${j.status}</span> · ${esc(what)}</div><div class="meta">${esc(j.last || '')}</div>`);
+    });
+    fill($('files'), files, x => li(`<a href="/files/${encodeURIComponent(x.name)}" download>${esc(x.name)}</a> <span class="meta">${size(x.size)}</span>`));
+  } catch (_) {}
+}
+syncMode();
+refresh();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>
