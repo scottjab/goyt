@@ -1,17 +1,15 @@
-// goyt is a tiny web frontend for yt-dlp that runs as its own node on a tailnet.
+// goyt is a tiny web frontend for yt-dlp.
 package main
 
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,8 +19,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"tailscale.com/tsnet"
 )
 
 //go:embed index.html
@@ -246,12 +242,9 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 func main() {
 	var (
-		hostname = flag.String("hostname", "goyt", "tailnet hostname for this node")
-		stateDir = flag.String("state-dir", "", "tsnet state dir (default: OS config dir)")
+		listen   = flag.String("listen", ":8080", "address to listen on")
 		dir      = flag.String("dir", "downloads", "where downloads are saved")
 		ytdlp    = flag.String("yt-dlp", "yt-dlp", "path to yt-dlp (or youtube-dl)")
-		listen   = flag.String("listen", "", "if set (e.g. 127.0.0.1:8080), skip tailscale and listen here instead; handy for local testing")
-		useTLS   = flag.Bool("https", false, "also serve HTTPS on :443 with a tailnet cert (needs HTTPS enabled in the tailnet)")
 		parallel = flag.Int("parallel", 2, "max downloads at once")
 	)
 	flag.Parse()
@@ -268,29 +261,6 @@ func main() {
 	mux.HandleFunc("GET /api/files", s.handleFiles)
 	mux.Handle("GET /files/", http.StripPrefix("/files/", http.FileServer(http.Dir(abs))))
 
-	if *listen != "" {
-		log.Printf("listening on http://%s, saving to %s", *listen, abs)
-		log.Fatal(http.ListenAndServe(*listen, mux))
-	}
-
-	// Auth: set TS_AUTHKEY, or watch the log for a login URL on first run.
-	ts := &tsnet.Server{Hostname: *hostname, Dir: *stateDir}
-	defer ts.Close()
-	if _, err := ts.Up(context.Background()); err != nil {
-		log.Fatal(err)
-	}
-
-	errc := make(chan error, 2)
-	serve := func(ln net.Listener, err error) {
-		if err != nil {
-			log.Fatal(err)
-		}
-		errc <- http.Serve(ln, mux)
-	}
-	go serve(ts.Listen("tcp", ":80"))
-	if *useTLS {
-		go serve(ts.ListenTLS("tcp", ":443"))
-	}
-	log.Printf("up on tailnet as http://%s/, saving to %s", *hostname, abs)
-	log.Fatal(<-errc)
+	log.Printf("listening on %s, saving to %s", *listen, abs)
+	log.Fatal(http.ListenAndServe(*listen, mux))
 }

@@ -1,18 +1,15 @@
 # goyt
 
-Tiny web frontend for yt-dlp that runs as its own node on your tailnet (via tsnet).
-Paste a link, pick video+audio or audio only, hit download. Defaults to best video + best audio.
-Finished files show up on the page with download links.
+Tiny web frontend for yt-dlp. Paste a link, pick video+audio or audio only, hit download.
+Defaults to best video + best audio. Finished files show up on the page with download links.
 
 ## Run
 
-    nix run . -- -dir ~/Videos/goyt
+    nix run . -- -listen :8080 -dir ~/Videos/goyt
 
-First run prints a Tailscale login URL in the log (or set `TS_AUTHKEY=tskey-...`).
-Then open http://goyt/ from anything on the tailnet.
+Flags: `-listen` (default `:8080`), `-dir`, `-parallel`, `-yt-dlp` (path to yt-dlp or youtube-dl).
 
-Flags: `-hostname`, `-dir`, `-state-dir`, `-https` (tailnet cert on :443), `-parallel`,
-`-yt-dlp` (path to yt-dlp or youtube-dl), `-listen 127.0.0.1:8080` (skip tailscale, for local testing).
+There's no auth, so keep it on a private network (e.g. only reachable over tailscale).
 
 ## NixOS
 
@@ -22,7 +19,8 @@ inputs.goyt.url = "github:scottjab/goyt";
 imports = [ inputs.goyt.nixosModules.default ];
 services.goyt = {
   enable = true;
-  # authKeyFile = "/run/secrets/goyt-ts";  # file containing TS_AUTHKEY=tskey-...
+  port = 8080;
+  openFirewall = true;  # opens the port on tailscale0 only
   # downloadDir = "/srv/media/youtube";
 };
 ```

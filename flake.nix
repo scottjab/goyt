@@ -1,5 +1,5 @@
 {
-  description = "goyt: a tiny yt-dlp web frontend that lives on your tailnet";
+  description = "goyt: a tiny yt-dlp web frontend";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -14,7 +14,7 @@
           pname = "goyt";
           version = "0.1.0";
           src = ./.;
-          vendorHash = "sha256-fEmhwJPsVpmNyn7fMFA5SeCfTKVora8c+MgwVhGOoBc=";
+          vendorHash = null;
           nativeBuildInputs = [ pkgs.makeWrapper ];
           # yt-dlp needs ffmpeg to merge video+audio and extract audio.
           postInstall = ''
@@ -38,24 +38,23 @@
               type = lib.types.package;
               default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
             };
-            hostname = lib.mkOption {
+            port = lib.mkOption {
+              type = lib.types.port;
+              default = 8080;
+            };
+            address = lib.mkOption {
               type = lib.types.str;
-              default = "goyt";
-              description = "Tailnet hostname for the node.";
+              default = "";
+              description = "Address to bind. Empty means all interfaces.";
+            };
+            openFirewall = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Open the port on the tailscale0 interface only.";
             };
             downloadDir = lib.mkOption {
               type = lib.types.str;
               default = "/var/lib/goyt/downloads";
-            };
-            https = lib.mkOption {
-              type = lib.types.bool;
-              default = false;
-              description = "Also serve HTTPS with a tailnet cert (HTTPS must be enabled for the tailnet).";
-            };
-            authKeyFile = lib.mkOption {
-              type = lib.types.nullOr lib.types.path;
-              default = null;
-              description = "File with a Tailscale auth key (TS_AUTHKEY=tskey-...). Only needed for the first login; otherwise watch the journal for a login URL.";
             };
           };
 
@@ -68,14 +67,12 @@
               serviceConfig = {
                 ExecStart = lib.escapeShellArgs ([
                   (lib.getExe cfg.package)
-                  "-hostname" cfg.hostname
-                  "-state-dir" "/var/lib/goyt/tsnet"
+                  "-listen" "${cfg.address}:${toString cfg.port}"
                   "-dir" cfg.downloadDir
-                ] ++ lib.optional cfg.https "-https");
+                ]);
                 DynamicUser = true;
                 StateDirectory = "goyt";
                 Environment = [ "HOME=/var/lib/goyt" ];
-                EnvironmentFile = lib.mkIf (cfg.authKeyFile != null) cfg.authKeyFile;
                 ReadWritePaths = lib.mkIf (!lib.hasPrefix "/var/lib/goyt" cfg.downloadDir) [ cfg.downloadDir ];
                 Restart = "on-failure";
                 NoNewPrivileges = true;
@@ -83,6 +80,7 @@
                 PrivateTmp = true;
               };
             };
+            networking.firewall.interfaces.tailscale0.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
           };
         };
     };
