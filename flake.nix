@@ -40,7 +40,7 @@
             };
             port = lib.mkOption {
               type = lib.types.port;
-              default = 8080;
+              default = 9090;
             };
             address = lib.mkOption {
               type = lib.types.str;

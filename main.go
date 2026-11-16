@@ -242,7 +242,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 func main() {
 	var (
-		listen   = flag.String("listen", ":8080", "address to listen on")
+		listen   = flag.String("listen", ":9090", "address to listen on")
 		dir      = flag.String("dir", "downloads", "where downloads are saved")
 		ytdlp    = flag.String("yt-dlp", "yt-dlp", "path to yt-dlp (or youtube-dl)")
 		parallel = flag.Int("parallel", 2, "max downloads at once")

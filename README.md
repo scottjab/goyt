@@ -5,9 +5,9 @@ Defaults to best video + best audio. Finished files show up on the page with dow
 
 ## Run
 
-    nix run . -- -listen :8080 -dir ~/Videos/goyt
+    nix run . -- -listen :9090 -dir ~/Videos/goyt
 
-Flags: `-listen` (default `:8080`), `-dir`, `-parallel`, `-yt-dlp` (path to yt-dlp or youtube-dl).
+Flags: `-listen` (default `:9090`), `-dir`, `-parallel`, `-yt-dlp` (path to yt-dlp or youtube-dl).
 
 There's no auth, so keep it on a private network (e.g. only reachable over tailscale).
 
@@ -19,7 +19,7 @@ inputs.goyt.url = "github:scottjab/goyt";
 imports = [ inputs.goyt.nixosModules.default ];
 services.goyt = {
   enable = true;
-  port = 8080;
+  port = 9090;
   openFirewall = true;  # opens the port on tailscale0 only
   # downloadDir = "/srv/media/youtube";
 };
