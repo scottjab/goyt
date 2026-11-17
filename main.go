@@ -44,6 +44,7 @@ type job struct {
 type server struct {
 	ytdlp string
 	dir   string
+	keep  int
 	sem   chan struct{}
 
 	mu     sync.Mutex
@@ -152,6 +153,9 @@ func (s *server) run(j *job) {
 			j.Status = "done"
 		}
 	})
+	if j.Status == "done" {
+		s.prune()
+	}
 	log.Printf("job %d %s: %s", j.ID, j.Status, j.Opts.URL)
 }
 
@@ -170,6 +174,43 @@ func (s *server) update(j *job, f func(*job)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	f(j)
+}
+
+// prune keeps only the newest s.keep finished files in the cache dir.
+func (s *server) prune() {
+	if s.keep <= 0 {
+		return // disabled
+	}
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		log.Printf("prune: %v", err)
+		return
+	}
+	type entry struct {
+		name string
+		mod  time.Time
+	}
+	var files []entry
+	for _, e := range entries {
+		// same skip rules as handleFiles: dirs and yt-dlp in-progress files
+		if e.IsDir() || strings.HasSuffix(e.Name(), ".part") || strings.HasSuffix(e.Name(), ".ytdl") || strings.Contains(e.Name(), ".temp.") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, entry{e.Name(), info.ModTime()})
+	}
+	sort.Slice(files, func(i, k int) bool { return files[i].mod.After(files[k].mod) })
+	for i := s.keep; i < len(files); i++ {
+		f := files[i]
+		if err := os.Remove(filepath.Join(s.dir, f.name)); err != nil {
+			log.Printf("prune: remove %s: %v", f.name, err)
+		} else {
+			log.Printf("prune: removed %s", f.name)
+		}
+	}
 }
 
 func (s *server) handleJobs(w http.ResponseWriter, r *http.Request) {
@@ -199,9 +240,10 @@ func (s *server) handleJobs(w http.ResponseWriter, r *http.Request) {
 		if len(s.jobs) > 200 {
 			s.jobs = s.jobs[len(s.jobs)-200:]
 		}
+		snapshot := *j
 		s.mu.Unlock()
 		go s.run(j)
-		writeJSON(w, j)
+		writeJSON(w, snapshot)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -246,6 +288,7 @@ func main() {
 		dir      = flag.String("dir", "downloads", "where downloads are saved")
 		ytdlp    = flag.String("yt-dlp", "yt-dlp", "path to yt-dlp (or youtube-dl)")
 		parallel = flag.Int("parallel", 2, "max downloads at once")
+		keep     = flag.Int("keep", 10, "keep only the newest N files in the cache dir (0 keeps everything)")
 	)
 	flag.Parse()
 
@@ -253,7 +296,7 @@ func main() {
 		log.Fatal(err)
 	}
 	abs, _ := filepath.Abs(*dir)
-	s := &server{ytdlp: *ytdlp, dir: abs, sem: make(chan struct{}, max(*parallel, 1))}
+	s := &server{ytdlp: *ytdlp, dir: abs, keep: *keep, sem: make(chan struct{}, max(*parallel, 1))}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /{$}", http.FileServerFS(static))

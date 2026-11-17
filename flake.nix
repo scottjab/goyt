@@ -37,6 +37,12 @@
             package = lib.mkOption {
               type = lib.types.package;
               default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+              description = "The goyt package to run.";
+            };
+            ytDlpPackage = lib.mkOption {
+              type = lib.types.package;
+              default = pkgs.yt-dlp;
+              description = "Which yt-dlp to put on PATH (takes precedence via -yt-dlp flag).";
             };
             port = lib.mkOption {
               type = lib.types.port;
@@ -55,6 +61,17 @@
             downloadDir = lib.mkOption {
               type = lib.types.str;
               default = "/var/lib/goyt/downloads";
+              description = "Where downloads are cached.";
+            };
+            keep = lib.mkOption {
+              type = lib.types.int;
+              default = 10;
+              description = "Keep only the newest N files in downloadDir. 0 keeps everything.";
+            };
+            parallel = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 2;
+              description = "Max concurrent downloads.";
             };
           };
 
@@ -69,6 +86,9 @@
                   (lib.getExe cfg.package)
                   "-listen" "${cfg.address}:${toString cfg.port}"
                   "-dir" cfg.downloadDir
+                  "-keep" (toString cfg.keep)
+                  "-parallel" (toString cfg.parallel)
+                  "-yt-dlp" (lib.getExe cfg.ytDlpPackage)
                 ]);
                 DynamicUser = true;
                 StateDirectory = "goyt";
